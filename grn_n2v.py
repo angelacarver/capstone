@@ -62,12 +62,6 @@ def load_and_preprocess_data(filepaths: list, batch_labels: list):
     sc.pp.highly_variable_genes(adata, n_top_genes=2000)
     sc.pl.highly_variable_genes(adata)
 
-    #batch correction
-    #if batch_effects == True:
-     #   sc.pp.scale(adata, max_value=10)
-      #  sc.tl.pca(adata, svd_solver='arpack')
-       # adata.obsm['X_pca_harmony'] = hm.run_harmony(adata.obsm['X_pca'], adata.obs, 'batch').Z_corr.T
-
     #dimensionality reduction
     sc.tl.pca(adata)
     sc.pl.pca_variance_ratio(adata, n_pcs=50, log=True)
@@ -104,17 +98,9 @@ def load_and_preprocess_data(filepaths: list, batch_labels: list):
         ncols=2,
     )
 
-    #manual cell-type annotation
-
-
-    #filter out highly variable genes
-    #adata.raw = adata
-    #adata = adata[:, adata.var.highly_variable]
-
-    #print(adata) #print filtered, normalized expression matrix
     return adata
 
-def cell_type_annotation(adata):
+def cell_type_annotation(adata, filepath):
     #how do you choose res? Since there is only one cell type in the control, should it just be one cluster?
     for res in [0.02, 0.5, 2.0]:
         #generate clusters
@@ -124,7 +110,7 @@ def cell_type_annotation(adata):
     legend_loc="on data",)
     sc.tl.leiden(adata, key_added=f"leiden_res_0.5", resolution=0.5, flavor="igraph") #chose 0.5 resolution
     #need list of neuron-related markers to filter out housekeeping genes, noise, etc.
-    neuronal_markers = pd.read_csv(".\\statistical_cell_markers.csv")
+    neuronal_markers = pd.read_csv(filepath)
     neuronal_markers = neuronal_markers["marker"].to_list()
     print('Typical neuronal markers: ', neuronal_markers)
     available_markers = [gene for gene in neuronal_markers if gene in adata.var_names]
@@ -147,6 +133,7 @@ def cell_type_annotation(adata):
     #adata.obs['cell_type'] = adata.obs['leiden'].astype(str)
     #adata.obs['cell_type'].replace({'0': 'Neuron', '1':})   
 
+    '''
 def construct_grn(adata) -> nx.Graph:
     expression_matrix = adata.X.T.toarray() #extract expression matrix (genes x cells) and transpose it (cells x genes)
     correlation_matrix = np.corrcoef(expression_matrix) #compute correlation matrix (gene-gene correlations)
@@ -171,6 +158,39 @@ def construct_grn(adata) -> nx.Graph:
     print(f"Number of edges: {G.number_of_edges()}")
 
     return G
+    '''
+
+
+def construct_grn(adata, threshold=0.5) -> nx.Graph:
+    # Extract sparse expression matrix (genes x cells)
+    expression_matrix = adata.X.T  # Transpose to (cells x genes)
+    
+    # Compute correlation matrix efficiently for sparse matrices
+    # Only calculate correlations for upper triangle
+    correlation_matrix = np.corrcoef(expression_matrix.toarray())
+    
+    # Apply threshold directly on the correlation matrix
+    mask = np.abs(correlation_matrix) >= threshold
+    np.fill_diagonal(mask, False)  # Remove self-loops
+    
+    # Create graph
+    genes = adata.var_names
+    G = nx.Graph()
+    G.add_nodes_from(genes)  # Add gene nodes
+    
+    # Use numpy to extract edges
+    edges = np.column_stack(np.where(mask))
+    weights = correlation_matrix[mask]
+    
+    # Add edges with weights
+    for (i, j), weight in zip(edges, weights):
+        G.add_edge(genes[i], genes[j], weight=weight)
+    
+    print(f"Number of nodes: {G.number_of_nodes()}")
+    print(f"Number of edges: {G.number_of_edges()}")
+    
+    return G
+    
 
 def apply_node2vec(G: nx.Graph) -> dict:
     node2vec = Node2Vec(G, dimensions=64, walk_length=30, num_walks=200, workers=4) #apply Node@Vec on constructed graph
@@ -238,6 +258,43 @@ def predict_regulatory_relationships(G, embeddings):
     missing_edges_sorted = sorted(missing_edges, key=lambda x: x[2], reverse=True)
     print(missing_edges_sorted[:10])
 
+def visualize_graph(node_embeddings):
+    tsne = sklearn.manifold.TSNE(n_components=2)
+    node_embeddings_tsne = tsne.fit_transform(node_embeddings)
+    alpha = 0.7
+    plt.figure(figsize=(10, 8))
+    plt.scatter(
+        node_embeddings_tsne[:, 0],
+        node_embeddings_tsne[:, 1],
+        cmap="jet",
+        alpha=alpha
+    )
+
+def ANOVA(control_embeddings, treatment1_embeddings, treatment2_embeddings):
+    # Assume embeddings is a NumPy array (genes x dimensions), labels is an array of conditions
+    p_values = []
+    for dim in range(embeddings.shape[1]):
+        control = control_embeddings[dim]
+        treatment1 = treatment1_embeddings[dim]
+        treatment2 = treatment2_embeddings[dim]
+        _, p = f_oneway(control, treatment1, treatment2)
+        p_values.append(p)
+
+    # Multiple testing correction
+    adjusted_p_values = multipletests(p_values, method='fdr_bh')[1] #control for false discovery rate
+
+    # Identify significant dimensions
+    significant_dims = np.where(adjusted_p_values < 0.05)[0]
+    print(f"Significant embedding dimensions: {significant_dims}")
+    return significant_dims
+
+def extract_top_genes(significant_dims):
+    overall_top_genes = []
+    for dim in significant_dims:
+        top_genes = np.argsort(-np.abs(embeddings[:, dim]))[:10]  # Top 10 genes by absolute value
+        print(f"Significant dimension {dim}: Top contributing genes {adata.var_names[top_genes]}")
+        overall_top_genes.append(top_genes)
+    return overall_top_genes
 
 
 
@@ -251,8 +308,11 @@ if __name__=='__main__':
     group3_data = load_and_preprocess_data([group3_filepath], batch_labels=["treatment2"])
     #cell_type_annotation(data)
     control_graph = construct_grn(control_data)
+    visualize_graph(control_graph)
     group2_graph = construct_grn(group2_data)
+    visualize_graph(group2_graph)
     group3_graph = construct_grn(group3_data)
+    visualize_graph(group3_graph)
     
     #control only
     #control_data = load_and_preprocess_data(control_filepath)

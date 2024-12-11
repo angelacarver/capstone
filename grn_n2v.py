@@ -13,6 +13,11 @@ from tqdm import tqdm
 import harmonypy as hm
 import math
 import anndata as ad
+from scipy.stats import fisher_exact
+from networkx.algorithms import community
+import sklearn
+from scipy.stats import f_oneway
+from statsmodels.stats.multitest import multipletests
 
 def load_and_preprocess_data(filepaths: list, batch_labels: list):
     #load in mtx file
@@ -37,6 +42,17 @@ def load_and_preprocess_data(filepaths: list, batch_labels: list):
     sc.pp.calculate_qc_metrics(adata, qc_vars=["mt", "ribo", "hb"], inplace=True, log1p=True) #calculate QC metrics
     sc.pl.violin(adata, ["n_genes_by_counts", "total_counts", "pct_counts_mt"], jitter=0.4, multi_panel=True,) #violin plot of QC
     sc.pl.scatter(adata, "total_counts", "n_genes_by_counts", color="pct_counts_mt")
+
+    # Combine filters: Keep only genes not in the above categories
+    genes_to_keep = ~(
+        adata.var['mt'] |
+        adata.var['hb'] |
+        adata.var['ribo']
+    )
+
+    # Filter the data
+    adata = adata[:, genes_to_keep].copy()
+    print('adata mt: ', adata.var['mt'])
 
     #filter cells and genes, normalize data
     sc.pp.filter_cells(adata, min_genes=200)
@@ -99,6 +115,9 @@ def load_and_preprocess_data(filepaths: list, batch_labels: list):
     )
 
     return adata
+    #TODO need to convert to expression matrix using adata.X
+
+#TODO check for and filter out the noncoding genes
 
 def cell_type_annotation(adata, filepath):
     #how do you choose res? Since there is only one cell type in the control, should it just be one cluster?
@@ -122,12 +141,14 @@ def cell_type_annotation(adata, filepath):
     for i in range(n_plots):
         subset_markers = available_markers[i * markers_per_plot : (i+1) * markers_per_plot]
         titles = [f"Expression of {marker}" for marker in subset_markers]
-        sc.pl.umap(adata, color=subset_markers, title=titles, n_cols=2)
+        sc.pl.umap(adata, color=subset_markers, title=titles)
 
     #calculate the mean expression of each marker per cluster
     sc.tl.rank_genes_groups(adata, 'leiden', method='t-test')
     #annotate clusters based on known markers
     sc.pl.rank_genes_groups(adata, n_genes=10, sharey=False)
+    sc.pl.umap(adata, color='cell_type', legend_loc='on data')
+
     #TODO rename clusters manually
     #since they are all the same cell type, how should clusters be labeled?
     #adata.obs['cell_type'] = adata.obs['leiden'].astype(str)
@@ -273,7 +294,7 @@ def visualize_graph(node_embeddings):
 def ANOVA(control_embeddings, treatment1_embeddings, treatment2_embeddings):
     # Assume embeddings is a NumPy array (genes x dimensions), labels is an array of conditions
     p_values = []
-    for dim in range(embeddings.shape[1]):
+    for dim in range(control_embeddings.shape[1]):
         control = control_embeddings[dim]
         treatment1 = treatment1_embeddings[dim]
         treatment2 = treatment2_embeddings[dim]
@@ -288,13 +309,118 @@ def ANOVA(control_embeddings, treatment1_embeddings, treatment2_embeddings):
     print(f"Significant embedding dimensions: {significant_dims}")
     return significant_dims
 
-def extract_top_genes(significant_dims):
+def extract_top_genes(significant_dims, embeddings):
     overall_top_genes = []
     for dim in significant_dims:
         top_genes = np.argsort(-np.abs(embeddings[:, dim]))[:10]  # Top 10 genes by absolute value
         print(f"Significant dimension {dim}: Top contributing genes {adata.var_names[top_genes]}")
         overall_top_genes.append(top_genes)
     return overall_top_genes
+
+def calculate_network_metrics(G):
+    metrics = {
+        "average degree": np.mean([d for _, d in G.degree()]),
+        "clustering coefficient": nx.average_clustering(G),
+        "density": nx.density(G),
+        "avg_path_length": nx.average_shortest_path_length(G),
+    }
+    return metrics
+
+def calculate_grn_metrics(grn_control, grn_treatment1):
+    # Overlap of edges between control and treatment
+    edges_control = set(grn_control.edges())
+    edges_treatment = set(grn_treatment1.edges())
+    overlap = len(edges_control & edges_treatment)
+
+    # Fisher's test for overlap
+    contingency_table = [
+        [overlap, len(edges_control) - overlap],
+        [len(edges_treatment) - overlap, len(genes)**2 - len(edges_control) - len(edges_treatment) + overlap]
+    ]
+    odds_ratio, p_value = fisher_exact(contingency_table)
+    print(f"Edge overlap p-value: {p_value}")
+
+#Differential Connectivity Analysis
+
+def calculate_node_metrics(G):
+    metrics = {
+        "degree": dict(G.degree()),
+        "betweenness": nx.betweenness_centrality(G),
+        "clustering": nx.clustering(G),
+        "eigenvector": nx.eigenvector_centrality(G, max_iter=1000),
+    }
+    return metrics
+
+def louvain_subnetwork_analysis():
+    # Detect communities in GRNs
+    communities_control = list(community.louvain_communities(grn_control))
+    communities_treatment = list(community.louvain_communities(grn_treatment1))
+
+    # Compare average degrees within communities
+    community_degrees_control = [np.mean([grn_control.degree[n] for n in c]) for c in communities_control]
+    community_degrees_treatment = [np.mean([grn_treatment1.degree[n] for n in c]) for c in communities_treatment]
+
+    print("Control community degrees:", community_degrees_control)
+    print("Treatment community degrees:", community_degrees_treatment)
+    return community_degrees_control, community_degrees_treatment
+
+def visualize_node_degree_differences():
+    # Degree differences
+    degree_diff = {gene: metrics_treatment1["degree"].get(gene, 0) - metrics_control["degree"].get(gene, 0) 
+               for gene in grn_control.nodes}
+
+    # Plot network with degree differences
+    pos = nx.spring_layout(grn_control)  # Layout for visualization
+    nx.draw(grn_control, pos, node_color=list(degree_diff.values()), cmap=plt.cm.coolwarm, with_labels=True)
+    plt.title("Differential Node Degrees (Treatment 1 - Control)")
+    plt.show()
+
+
+#comparing networks constructed using different methods
+
+def edge_jaccard_similarity(G1, G2):
+    edges1 = set(G1.edges())
+    edges2 = set(G2.edges())
+    intersection = len(edges1 & edges2)
+    union = len(edges1 | edges2)
+    return intersection / union
+
+# Assume `clusters_method1` and `clusters_method2` are lists of sets (clusters of nodes)
+def cluster_similarity(clusters1, clusters2):
+    """
+    Used to compare network subcommunities from networks created using different methods.
+    """
+    # Flatten clusters to node-to-cluster mappings
+    node_to_cluster1 = {node: i for i, cluster in enumerate(clusters1) for node in cluster}
+    node_to_cluster2 = {node: i for i, cluster in enumerate(clusters2) for node in cluster}
+
+    # Align node sets
+    common_nodes = set(node_to_cluster1.keys()) & set(node_to_cluster2.keys())
+    labels1 = [node_to_cluster1[node] for node in common_nodes]
+    labels2 = [node_to_cluster2[node] for node in common_nodes]
+
+    return adjusted_rand_score(labels1, labels2)
+
+def node_level_comparison(network1, network2):
+    degree_method1 = dict(network_method1.degree())
+    degree_method2 = dict(network_method2.degree())
+
+    # Only compare nodes that are present in both networks
+    common_nodes = set(degree_method1.keys()) & set(degree_method2.keys())
+    degrees1 = [degree_method1[node] for node in common_nodes]
+    degrees2 = [degree_method2[node] for node in common_nodes]
+
+    correlation, pval = scipy.stats.pearsonr(degrees1, degrees2)
+    print("Degree Correlation:", correlation)
+
+def embeddings_level_comparison():
+    # Assume embeddings_method1 and embeddings_method2 are numpy arrays (nodes x dimensions)
+    similarity_matrix = cosine_similarity(embeddings_method1, embeddings_method2)
+    average_similarity = similarity_matrix.mean()
+    print("Average Cosine Similarity:", average_similarity)
+    return similarity_matrix, average_similarity
+
+
 
 
 

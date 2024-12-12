@@ -33,7 +33,7 @@ def load_and_preprocess_data(filepaths: list, batch_labels: list):
 
     #quality control
     #mitochondrial genes, "MT-"
-    adata.var["mt"] = adata.var_names.str.startswith("MT-")
+    adata.var["mt"] = adata.var_names.str.startswith("MT")
     #ribosomal genes
     adata.var["ribo"] = adata.var_names.str.startswith(("RPS", "RPL"))
     #hemoglobin genes
@@ -127,7 +127,6 @@ def cell_type_annotation(adata, filepath):
     #plot it
     sc.pl.umap(adata, color=["leiden_res_0.02", "leiden_res_0.50", "leiden_res_2.00"],
     legend_loc="on data",)
-    sc.tl.leiden(adata, key_added=f"leiden_res_0.5", resolution=0.5, flavor="igraph") #chose 0.5 resolution
     #need list of neuron-related markers to filter out housekeeping genes, noise, etc.
     neuronal_markers = pd.read_csv(filepath)
     neuronal_markers = neuronal_markers["marker"].to_list()
@@ -144,44 +143,40 @@ def cell_type_annotation(adata, filepath):
         sc.pl.umap(adata, color=subset_markers, title=titles)
 
     #calculate the mean expression of each marker per cluster
-    sc.tl.rank_genes_groups(adata, 'leiden', method='t-test')
+    sc.tl.rank_genes_groups(adata, groupby='leiden_res_0.50', method='t-test') #number of clusters in the ranking doesn't match number of clusters in leiden .5 graph
     #annotate clusters based on known markers
     sc.pl.rank_genes_groups(adata, n_genes=10, sharey=False)
+
+    #rename clusters manually
+    cluster_labels = {
+        '0': "Mature/Differentiating Neurons",
+        '1': "Neuronal Progenitors",
+        '2': "Mature Neurons",
+        '3': "Differentiating Neurons",
+        '4': "Early Differentiating Neurons",
+        '5': "Stress-Responsive/Signaling Neurons",
+        '6': "Transitioning/Active Neurons",
+        '7': "Astrocytes/Glia"
+    }
+    
+    adata.obs['cell_type'] = adata.obs['leiden_res_0.50'].map(cluster_labels)
     sc.pl.umap(adata, color='cell_type', legend_loc='on data')
 
-    #TODO rename clusters manually
-    #since they are all the same cell type, how should clusters be labeled?
-    #adata.obs['cell_type'] = adata.obs['leiden'].astype(str)
-    #adata.obs['cell_type'].replace({'0': 'Neuron', '1':})   
+    clusters_of_interest = ['0', '2']
+    print(adata[adata.obs['batch']== 'control'].X.toarray())
+    print(adata[adata.obs['leiden_res_0.50'].isin(clusters_of_interest)].X.toarray())
 
-    '''
-def construct_grn(adata) -> nx.Graph:
-    expression_matrix = adata.X.T.toarray() #extract expression matrix (genes x cells) and transpose it (cells x genes)
-    correlation_matrix = np.corrcoef(expression_matrix) #compute correlation matrix (gene-gene correlations)
-    threshold = 0#0.5 #threshold for correlations to build edges in the network
-    correlation_matrix[np.abs(correlation_matrix) < threshold] = 0
-    #compare distributions, see how many are kept
-    #may lose part of node2vec embeddings because of threshold on correlation matrix -> node2vec used as filter
+    control_data = adata[(adata.obs['batch'] == 'control') &
+                    (adata.obs['leiden_res_0.50'].isin(clusters_of_interest))]
 
-
-    #create graph
-    genes = adata.var_names
-    G = nx.Graph()
-    G.add_nodes_from(genes) #add gene nodes
-
-    #add edges (gene-gene correlations above threshold)
-    for i, gene1 in enumerate(genes):
-        for j, gene2 in enumerate(genes):
-            if i != j and correlation_matrix[i, j] != 0:
-                G.add_edge(gene1, gene2, weight=correlation_matrix[i, j])
+    group2_data = adata[(adata.obs['batch'] == 'treatment1') &
+                    (adata.obs['leiden_res_0.50'].isin(clusters_of_interest))]
     
-    print(f"Number of nodes: {G.number_of_nodes()}")
-    print(f"Number of edges: {G.number_of_edges()}")
+    group3_data = adata[(adata.obs['batch'] == 'treatment2') &
+                    (adata.obs['leiden_res_0.50'].isin(clusters_of_interest))]
 
-    return G
-    '''
-
-
+    return control_data, group2_data, group3_data
+    
 def construct_grn(adata, threshold=0.5) -> nx.Graph:
     # Extract sparse expression matrix (genes x cells)
     expression_matrix = adata.X.T  # Transpose to (cells x genes)

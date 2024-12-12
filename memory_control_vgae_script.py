@@ -23,11 +23,6 @@ class GCNEncoder(torch.nn.Module):
         self.conv2 = GCNConv(4 * out_channels, 2 * out_channels)
         self.conv_mu = GCNConv(2 * out_channels, out_channels)
         self.conv_logstd = GCNConv(2 * out_channels, out_channels)
-
-    #def forward(self, x, edge_index):
-     #   x = self.conv1(x, edge_index).relu()
-      #  x = self.conv2(x, edge_index)
-       # return x
     
     def forward(self, x, edge_index):
         x1 = self.conv1(x, edge_index).relu()

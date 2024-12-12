@@ -212,7 +212,7 @@ if __name__ == "__main__":
         group3_data = pickle.load(f)
 
     print("Control Data Network")
-    beta = 100
+    beta = 275
     X = control_data.X.toarray()
 
     similarity_matrix = cosine_similarity(X)
@@ -347,7 +347,7 @@ if __name__ == "__main__":
 
     # Train the VGAE in batches
     print("Training model...")
-    model, z = train_vgae(data, model, beta, epochs=150, lr=0.001)
+    model, z = train_vgae(data, model, beta, epochs=150, lr=0.01)
 
     # Evaluate the GRN reconstruction
     print("Reconstructing adjacency matrix...")

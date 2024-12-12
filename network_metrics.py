@@ -151,8 +151,34 @@ def jaccard_similarity(embedding1, embedding2):
     jaccard = jaccard_score(neighbors1[node_index], neighbors2[node_index], average='micro')
     print(f"Jaccard Similarity for Node {node_index}: {jaccard}")
 
+"""
+Visualizations
+"""
+
+def plot_network(network, title):
+    plt.figure(figsize=(8,6))
+    nx.draw(network, node_size=50, node_color='blue', with_labels=True)
+    plt.title(title)
+    plt.show()
+
+
+
 
 if __name__ == '__main__':
 
+    """
+    Comparing models
+    """    
+    #read in data
+    
+
+    #convert to networkx objects
 
 
+    #run metrics & visualizations
+    degree_distribution(network1, network2, network3, network1_name: str, network2_name: str, network3_name:str)
+
+
+    """
+    Comparing Treatments
+    """

@@ -403,9 +403,13 @@ Here is the detailed `README.md` for the `vgae.py` script, which documents each 
 
 ---
 
-# vgae.py
+Here is the detailed `README.md` for the `memory_control_vgae_script.py` script, documenting its functionality, purpose, and biological context.
 
-The `vgae.py` script implements a Variational Graph Autoencoder (VGAE) using PyTorch Geometric to analyze biological networks such as gene regulatory networks (GRNs). This script is designed to encode biological graph data into low-dimensional embeddings, reconstruct adjacency matrices, and identify potential regulatory relationships.
+---
+
+# memory_control_vgae_script.py
+
+The `memory_control_vgae_script.py` script implements a Variational Graph Autoencoder (VGAE) with efficient memory management for analyzing gene regulatory networks (GRNs). It constructs sparse adjacency matrices, trains VGAE models, and evaluates reconstructed GRNs across multiple experimental groups. The script focuses on scalability and efficient handling of large-scale biological data.
 
 ---
 
@@ -413,13 +417,15 @@ The `vgae.py` script implements a Variational Graph Autoencoder (VGAE) using PyT
 
 ### Python Libraries
 
-The script depends on the following libraries:
+The script uses the following Python libraries:
 
-- **torch**: For deep learning model implementation.
-- **torch_geometric**: For graph-based neural networks.
-- **scipy**: For sparse matrix handling and adjacency matrix construction.
-- **sklearn**: For data preprocessing and evaluation metrics.
-- **scanpy**: For single-cell data analysis.
+- **torch**: For implementing neural networks.
+- **torch_geometric**: For graph-based machine learning.
+- **numpy**: For numerical computations.
+- **networkx**: For graph operations.
+- **scipy**: For sparse matrix handling.
+- **scikit-learn**: For preprocessing and similarity computations.
+- **matplotlib**: For visualizations.
 
 ---
 
@@ -429,138 +435,153 @@ The script depends on the following libraries:
 
 **Class**: `GCNEncoder`
 
-- **Purpose**: Implements the encoder for VGAE using Graph Convolutional Networks (GCNs).
-- **Biological Context**: Encodes high-dimensional gene expression data into a latent space that captures relationships between genes.
+- **Purpose**: A custom encoder for the VGAE that utilizes multiple Graph Convolutional Network (GCN) layers to encode graph structure into a latent space.
+- **Biological Context**: Encodes high-dimensional gene expression data while preserving the relationships between genes.
 
 **Key Methods**:
 
-1. **`forward`**: Defines the forward pass of the GCN, applying two convolutional layers with ReLU activation.
+1. **`forward`**:
+
+   - Processes input features through GCN layers.
+   - Outputs mean (`mu`) and log standard deviation (`logstd`) for the latent space.
 
    ```python
    def forward(self, x, edge_index):
-       x = self.conv1(x, edge_index).relu()
-       x = self.conv2(x, edge_index)
-       return x
+       x1 = self.conv1(x, edge_index).relu()
+       x2 = self.conv2(x1, edge_index).relu()
+       mu = self.conv_mu(x2, edge_index)
+       logstd = self.conv_logstd(x2, edge_index)
+       return mu, logstd
    ```
 
-2. **`build_adjacency_matrix`**: Constructs an adjacency matrix from a correlation matrix of gene expression data.
-   - **Biological Context**: Captures co-expression relationships between genes.
+2. **`build_adjacency_matrix`**:
+   - Constructs a sparse adjacency matrix based on a correlation threshold.
+   - **Biological Context**: Represents co-expression relationships between genes in the dataset.
 
 ---
 
 ### 2. VGAE Training
 
-**Method**: `train_vgae`
+**Function**: `train_vgae`
 
-- **Purpose**: Trains a Variational Graph Autoencoder (VGAE) to encode gene expression data and reconstruct the graph's structure.
-- **Biological Context**: Learns a latent representation of genes and their interactions.
+- **Purpose**: Trains the VGAE model to encode gene expression data and reconstruct the graph.
+- **Biological Context**: Learns latent representations of genes while optimizing reconstruction accuracy and regularizing via KL divergence.
 
 **Key Steps**:
 
-1. Encodes node features (`x`) using the GCN encoder.
-2. Computes reconstruction loss and KL divergence loss.
-3. Optimizes the VGAE model over multiple epochs.
+- Encodes node features and computes reconstruction and KL divergence losses.
+- Trains the model using gradient descent.
+- Includes a custom reconstruction loss for better interpretability.
 
 **Example**:
 
 ```python
-model, z = train_vgae(data, in_channels=x.size(1), out_channels=16)
+model, z = train_vgae(data, model, beta=275, epochs=150, lr=0.001)
 ```
 
 ---
 
-### 3. VGAE Evaluation
+### 3. Memory-Efficient Adjacency Matrix Construction
 
-**Method**: `evaluate_vgae`
+**Functions**:
 
-- **Purpose**: Evaluates the VGAE model by reconstructing the adjacency matrix.
-- **Biological Context**: Checks the model's ability to capture regulatory interactions between genes.
+1. **`create_sparse_adjacency`**:
 
-**Key Steps**:
+   - Constructs a sparse adjacency matrix for large graphs using an Erdos-Renyi random graph generator.
+   - **Biological Context**: Simulates graph structures for testing and memory efficiency.
 
-- Encodes latent embeddings.
-- Decodes the embeddings to reconstruct the adjacency matrix.
+2. **`build_sparse_adjacency_from_embeddings`**:
+   - Constructs a sparse adjacency matrix from embeddings using cosine similarity.
+   - **Biological Context**: Identifies gene relationships based on similarity in latent space.
+
+---
+
+### 4. Custom Loss Functions
+
+**Functions**:
+
+1. **`custom_recon_loss`**:
+
+   - Computes reconstruction loss using binary cross-entropy, comparing reconstructed adjacency matrices to ground truth.
+   - **Biological Context**: Ensures that reconstructed GRNs accurately reflect the underlying gene relationships.
+
+2. **`weighted_recon_loss`**:
+   - Incorporates edge weights into the reconstruction loss for better granularity.
+   - **Biological Context**: Captures the varying strengths of gene-gene interactions.
+
+---
+
+### 5. Visualization
+
+**Function**: `visualize_reconstructed_adjacency_matrix`
+
+- **Purpose**: Visualizes the distribution of edge weights in the reconstructed adjacency matrix.
+- **Biological Context**: Assesses the quality of GRN reconstruction and identifies key interactions.
 
 **Example**:
 
 ```python
-reconstructed_adj = evaluate_vgae(model, data)
+visualize_reconstructed_adjacency_matrix(reconstructed_adjacency.detach().cpu().numpy(), "control")
 ```
 
 ---
 
-### 4. Main Pipeline
+### 6. Main Pipeline
 
-The main pipeline executes the following workflow:
+The script processes data for three experimental groups (control, treatment group 1, and treatment group 2) through the following steps:
 
 1. **Data Loading**:
-
-   - Reads gene expression data from `.mtx` files and preprocesses it.
-   - **Biological Context**: Ensures normalized gene expression data for meaningful comparisons.
-
-2. **Adjacency Matrix Construction**:
-
-   - Builds a graph representation of the data using co-expression correlations.
-
-3. **Model Training**:
-
-   - Trains the VGAE to learn latent representations of the graph.
-
-4. **Evaluation**:
-
-   - Reconstructs the adjacency matrix to validate the model's performance.
-
-5. **Embeddings**:
-   - Saves the latent embeddings for downstream analysis, such as clustering or visualization.
+   - Loads preprocessed data from `.pickle` files.
+   - Prepares features and adjacency matrices.
+2. **VGAE Training**:
+   - Trains VGAE models for each group to learn latent embeddings.
+3. **Evaluation**:
+   - Reconstructs adjacency matrices for each group.
+4. **Visualization and Embedding Storage**:
+   - Saves embeddings and reconstructed adjacency matrices for downstream analysis.
 
 **Example**:
 
 ```python
-adata = load_data("matrix.mtx", "genes.txt", "barcodes.txt")
-scaler = StandardScaler()
-adata.X = scaler.fit_transform(adata.X)
-x = torch.tensor(adata.X, dtype=torch.float32)
-edge_index, edge_weight = build_adjacency_matrix(adata)
-
-data = Data(x=x, edge_index=edge_index)
-
-model, embeddings = train_vgae(data, in_channels=x.size(1), out_channels=16)
-reconstructed_adjacency = evaluate_vgae(model, data)
-
-np.save("node_embeddings.npy", embeddings.cpu().numpy())
+data = Data(x=control_embeddings_list, edge_index=edge_index)
+model, z = train_vgae(data, model, beta=275, epochs=150, lr=0.001)
+reconstructed_adjacency = GCNEncoder.evaluate_vgae(model, data)
+np.save("control_reconstructed_adjacency_matrix.npy", reconstructed_adjacency.cpu().detach().numpy())
 ```
 
 ---
 
 ## Function Reference
 
-| Function/Method          | Description                                                | Biological Purpose                                                        |
-| ------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `GCNEncoder`             | Implements the encoder for the VGAE using GCN layers.      | Captures gene relationships and connectivity patterns.                    |
-| `build_adjacency_matrix` | Constructs an adjacency matrix from gene expression data.  | Represents co-expression relationships as a graph.                        |
-| `train_vgae`             | Trains the VGAE model.                                     | Learns a latent representation of gene interactions.                      |
-| `evaluate_vgae`          | Evaluates the VGAE by reconstructing the adjacency matrix. | Validates the model's ability to represent gene-gene regulatory networks. |
+| Function/Method                            | Description                                                     | Biological Purpose                                 |
+| ------------------------------------------ | --------------------------------------------------------------- | -------------------------------------------------- |
+| `GCNEncoder`                               | Implements the GCN-based encoder for VGAE.                      | Captures latent structure of GRNs.                 |
+| `build_adjacency_matrix`                   | Constructs adjacency matrix from gene expression data.          | Represents co-expression relationships as a graph. |
+| `train_vgae`                               | Trains VGAE with reconstruction and KL divergence loss.         | Learns a compact representation of GRNs.           |
+| `custom_recon_loss`                        | Computes custom reconstruction loss using binary cross-entropy. | Improves adjacency reconstruction accuracy.        |
+| `weighted_recon_loss`                      | Incorporates edge weights into reconstruction loss.             | Captures varying strengths of gene interactions.   |
+| `visualize_reconstructed_adjacency_matrix` | Visualizes the reconstructed adjacency matrix.                  | Evaluates GRN reconstruction quality.              |
 
 ---
 
 ## Biological Context
 
-### Why VGAE for GRNs?
+### Why Memory-Efficient VGAE for GRNs?
 
-- Gene Regulatory Networks (GRNs) capture complex relationships between genes, such as co-expression or direct regulation.
-- Variational Graph Autoencoders (VGAEs) encode these relationships into a latent space, preserving the network's structure while reducing dimensionality. This helps in discovering novel regulatory interactions, clustering genes, and understanding cellular processes.
+- Gene Regulatory Networks (GRNs) are often large and sparse, making efficient memory handling critical for scalability.
+- Variational Graph Autoencoders (VGAEs) provide a latent representation of these networks, enabling tasks like clustering and prediction of regulatory interactions.
 
 ### Applications:
 
-1. **Gene Clustering**: Identifying groups of genes that work together in biological processes.
-2. **Regulatory Predictions**: Predicting novel gene interactions based on latent embeddings.
-3. **Dimensionality Reduction**: Simplifying high-dimensional gene expression data for visualization or downstream analysis.
+1. **Regulatory Network Reconstruction**: Infers potential regulatory relationships from gene expression data.
+2. **Gene Clustering**: Groups genes based on latent embeddings to identify co-regulated modules.
+3. **Differential Network Analysis**: Compares GRNs across experimental conditions to identify condition-specific interactions.
 
 ---
 
 ## Conclusion
 
-The `vgae.py` script provides a robust framework for constructing and analyzing gene regulatory networks using VGAE. By integrating deep learning with graph-based methods, it enables researchers to uncover novel insights into gene interactions and cellular processes.
+The `memory_control_vgae_script.py` script is a scalable solution for analyzing large-scale GRNs using VGAE. Its memory-efficient adjacency matrix construction, customizable loss functions, and comprehensive evaluation pipeline make it suitable for advanced bioinformatics applications.
 
 ---
 

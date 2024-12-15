@@ -599,47 +599,6 @@ The edge weights represent the similarity or strength of relationships between n
 
 ---
 
-### Control Group
-
-![Control Group Edge Weights](control.png)
-
-- **Description**:  
-   The control group shows reconstructed edge weights tightly clustered near **1.0**, indicating that the model captured highly confident edges with strong co-expression relationships.
-- **Interpretation**:  
-   This suggests a robust and highly connected gene regulatory network under control conditions.
-
----
-
-### Treatment Group 1
-
-![Treatment Group 1 Edge Weights](group2.png)
-
-- **Description**:  
-   In treatment group 1, the edge weights have shifted significantly. A large portion of the reconstructed edges is clustered around **0.8**, with fewer edges close to 1.0.
-- **Interpretation**:  
-   This change suggests a potential disruption in gene interactions or weakened regulatory relationships due to the treatment.
-
----
-
-### Treatment Group 2
-
-![Treatment Group 2 Edge Weights](group3.png)
-
-- **Description**:  
-   For treatment group 2, the pattern remains similar to treatment group 1, but an additional small peak appears near **0.8**, with fewer high-confidence edges compared to the control group.
-- **Interpretation**:  
-   This pattern may indicate a partial recovery or different regulatory network reconfiguration under treatment group 2.
-
----
-
-### Comparative Insights
-
-- **Control Group**: Highly confident edges clustered around 1.0, indicating a robust regulatory network.
-- **Treatment Group 1**: A shift to weaker edge weights suggests disruption in the gene network.
-- **Treatment Group 2**: Similar to group 1 but with signs of a secondary peak, suggesting partial network restoration or a distinct interaction pattern.
-
----
-
 ## UMAP Visualization of Cell Types
 
 ![UMAP Cell Type Annotation](cell-marker-annotations.png)

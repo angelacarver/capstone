@@ -15,6 +15,8 @@ from sklearn.neighbors import NearestNeighbors
 import pickle
 from sklearn.metrics.pairwise import cosine_similarity
 from tqdm import tqdm
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import jaccard_score
 
 """
 This python file contains methods for computing GRN network similarity metrics.
@@ -23,7 +25,7 @@ This python file contains methods for computing GRN network similarity metrics.
 def degree_distribution(network1, network2, network3, network1_name: str, network2_name: str, network3_name:str):
     """
     Calculates and plots degree distribution
-    Compares distributions using Kolmogorov-Smirnov test
+    Compares distributions using ANOVA
 
     Args:
         networkx objects and their names (str)
@@ -66,17 +68,14 @@ def clustering_coefficients(network1, network2, network3):
         clustering coefficients
         f statistic and p value
     """
-    i = 1
+    i = 0
     clustering_coefficients = []
     for network in [network1, network2, network3]:
         clustering_coeffs = nx.clustering(network)
         average_clustering = sum(clustering_coeffs.values()) / len(clustering_coeffs)
-        clustering_coefficients.append(average_clustering)
+        #clustering_coefficients[i] = clustering_coeffs
         print(f"Average Clustering Coefficient for Network {i}: {average_clustering}")
-
-    f_stat, p_value = f_oneway(clustering_coefficients[0], clustering_coefficients[1], clustering_coefficients[2])
-    print(f"ANOVA: F-statistic={f_stat}, p-value={p_value}")
-    return f_stat, p_value
+        i += 1
 
 def modularity_score(network1, network2, network3):
     """
@@ -96,12 +95,13 @@ def node_centrality(network1, network2, network3, network1_name, network2_name, 
     Calculates and returns the top 5 nodes from each
     network by degree centrality
     """
+    i = 1
     for network in [network1, network2, network3]:
-        degree_centrality = nx.degree_centrality
-        print(f"Top 5 Nodes by Degree Centrality: {sorted(degree_centrality.items(), key=lambda x: x[1], reverse=True)[:5]}")
+        deg_centrality = nx.degree_centrality(network)
+        print(f"Top 5 Nodes by Degree Centrality for network {i}: {sorted(deg_centrality.items(), key=lambda x: x[1], reverse=True)[:5]}")
         betweenness_centrality = nx.betweenness_centrality(network)
-        print(f"Top 5 Nodes by Betweenness Centrality: {sorted(betweenness_centrality.items(), key=lambda x: x[1], reverse=True)[:5]}")
-    
+        print(f"Top 5 Nodes by Betweenness Centrality for network {i}: {sorted(betweenness_centrality.items(), key=lambda x: x[1], reverse=True)[:5]}")
+        i += 1
     #compare centrality distributions
     betweenness1 = list(nx.betweenness_centrality(network1).values())
     betweenness2 = list(nx.betweenness_centrality(network2).values())
@@ -109,28 +109,45 @@ def node_centrality(network1, network2, network3, network1_name, network2_name, 
     f_stat, p_value = f_oneway(clustering_coefficients[0], clustering_coefficients[1], clustering_coefficients[2])
     print(f"ANOVA: F-statistic={f_stat}, p-value={p_value}")
 
-"""
-The following section is designed to compare embeddings between node2vec and the VGAE.
-"""
+
+#The following section is designed to compare embeddings between node2vec and the VGAE.
+
 
 
 def procrustes_disparity(embeddings1, embeddings2):
     """
     Measures embedding space alignment
     """
-    m1, m2, disparity = procrustes(embeddings1, embeddings2)
+    keys1 = embeddings1.keys()
+
+    
+    matrix1 = np.array([np.array(embeddings1[key]) for key in keys1])
+    print(matrix1.shape)
+    m1, m2, disparity = procrustes(matrix1, embeddings2)
     print(f"Procrustes Disparity: {disparity}")
     return m1, m2, disparity
 
 def embedding_cosine_similarity(embeddings1, embeddings2):
-    cos_sim = np.mean([1 - cosine(e1, e2) for e1, e2 in zip(embeddings1, embeddings2)])
+    keys1 = embeddings1.keys()
+    
+    matrix1 = np.array([embeddings1[key] for key in keys1])
+
+    cos_sim = np.mean([1 - cosine(e1, e2) for e1, e2 in zip(matrix1, embeddings2)])
     print(f"Average cosine similarity of embeddings: {cos_sim}")
     return cos_sim
 
 def plot_embeddings(embedding1, embedding2):
+    # Ensure the embeddings are sorted by node keys
+    keys1 = sorted(embedding1.keys())
+    keys2 = sorted(embedding2.keys())
+    
+    # Extract embedding values
+    matrix1 = np.array([embedding1[key] for key in keys1])
+    matrix2 = np.array([embedding2[key] for key in keys2])
+    
     # Combine embeddings
-    combined_embeddings = np.vstack([embedding1, embedding2])
-    labels = ['Treatment1'] * len(embedding1) + ['Treatment2'] * len(embedding2)
+    combined_embeddings = np.vstack([matrix1, matrix2])
+    labels = ['Treatment1'] * len(matrix1) + ['Treatment2'] * len(matrix2)
 
     # Reduce dimensionality
     pca = PCA(n_components=2).fit_transform(combined_embeddings)
@@ -142,12 +159,24 @@ def plot_embeddings(embedding1, embedding2):
     plt.show()
 
 def jaccard_similarity(embedding1, embedding2):
+
+    # Ensure the embeddings are sorted by node keys
+    keys1 = embedding1.keys()
+    #keys2 = sorted(embedding2.keys())
+
+    #if keys1 != keys2:
+     #   raise ValueError("The embeddings do not have the same nodes.")
+    
+    # Extract embedding values
+    matrix1 = np.array([embedding1[key] for key in keys1])
+    #matrix2 = np.array([embedding2[key] for key in keys2])
+
     # Find nearest neighbors
-    nn1 = NearestNeighbors(n_neighbors=5).fit(embedding1)
+    nn1 = NearestNeighbors(n_neighbors=5).fit(matrix1)
     nn2 = NearestNeighbors(n_neighbors=5).fit(embedding2)
 
-    neighbors1 = nn1.kneighbors(embedding1, return_distance=False)
-    neighbors2 = nn2.kneighbors(embedding1, return_distance=False)
+    neighbors1 = nn1.kneighbors(matrix1, return_distance=False)
+    neighbors2 = nn2.kneighbors(embedding2, return_distance=False)
 
     # Jaccard similarity for node 0
     node_index = 0
@@ -159,10 +188,18 @@ Visualizations
 """
 
 def plot_network(network, title):
-    plt.figure(figsize=(8,6))
-    nx.draw(network, node_size=50, node_color='blue', with_labels=True)
+    #degree_centrality = nx.degree_centrality(network)
+
+    # Sort nodes by degree centrality and pick the top
+    #top_nodes = sorted(degree_centrality, key=degree_centrality.get, reverse=True)[:20]
+
+    # Subgraph with the top nodes
+    #subgraph = network.subgraph(top_nodes)
+    plt.figure(figsize=(20, 20))
+    nx.draw(network, node_size=9, alpha=0.5, edge_color= 'gray', node_color='blue', with_labels=True)
     plt.title(title)
-    plt.show()
+    name = title + '.png'
+    plt.savefig(name)
 
 def embeddings_to_networkx(network_embeddings):
     reconstructed_adj = network_embeddings @ network_embeddings.T  # Dot product to get similarity scores
@@ -209,6 +246,40 @@ def node2vec_to_networkx(network: dict, threshold=0.5):
 
     return G
 
+def scale_network(network, scaler):
+    """
+    Scaler that is already fitted to first network used to transform network
+
+    Returns:
+        scaled network
+    """
+    edge_weights = [data['weight'] for _, _, data in network.edges(data=True)]
+
+    # For edge weights
+    scaled_edge_weights = scaler.fit_transform([[w] for w in edge_weights])
+    for i, (u, v, data) in enumerate(corr_control.edges(data=True)):
+        data['weight'] = scaled_edge_weights[i][0]
+    
+    return network
+
+def jaccard_similarity_on_networkx(graph1, graph2):
+    common_nodes = set(graph1.nodes()).intersection(set(graph2.nodes()))
+    
+    jaccard_similarities = {}
+    for node in common_nodes:
+        # Get the neighbors for the node in both graphs
+        neighbors1 = set(graph1.neighbors(node))
+        neighbors2 = set(graph2.neighbors(node))
+        
+        # Compute Jaccard similarity
+        intersection = len(neighbors1.intersection(neighbors2))
+        union = len(neighbors1.union(neighbors2))
+        jaccard_similarities[node] = intersection / float(union)
+    
+    print(f"Average Jaccard similarity: {np.mean(jaccard_similarities.values())}")
+    return jaccard_similarities
+
+
 
 if __name__ == '__main__':
 
@@ -236,61 +307,75 @@ if __name__ == '__main__':
     vgae_treat2_embeddings = np.load("vgae_group3_node_embeddings.npy", allow_pickle=True)
 
     #convert to networkx objects
-    node2vec_control_network = node2vec_to_networkx(node2vec_control)
-    node2vec_treat1_network = node2vec_to_networkx(node2vec_treat1)
-    node2vec_treat2_network = node2vec_to_networkx(node2vec_treat2)
+    #node2vec_control_network = node2vec_to_networkx(node2vec_control)
+    #node2vec_treat1_network = node2vec_to_networkx(node2vec_treat1)
+    #node2vec_treat2_network = node2vec_to_networkx(node2vec_treat2)
 
-    vgae_control_network = embeddings_to_networkx(vgae_control_embeddings)
-    vgae_treat1_network = embeddings_to_networkx(vgae_treat1_embeddings)
-    vgae_treat2_network = embeddings_to_networkx(vgae_treat2_embeddings)
+    #with open ('node2vec_control_networkx.pickle', 'wb') as handle:
+     #   pickle.dump(node2vec_control_network, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    #with open('node2vec_treat1_networkx.pickle', 'wb') as handle:
+     #   pickle.dump(node2vec_treat1_network, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    #with open('node2vec_treat2_networkx.pickle', 'wb') as handle:
+    #    pickle.dump(node2vec_treat2_network, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+    #vgae_control_network = embeddings_to_networkx(vgae_control_embeddings)
+    #vgae_treat1_network = embeddings_to_networkx(vgae_treat1_embeddings)
+    #vgae_treat2_network = embeddings_to_networkx(vgae_treat2_embeddings)
 
+   # with open ('vgae_control_networkx.pickle', 'wb') as handle:
+    #    pickle.dump(vgae_control_network, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    #with open('vgae_treat1_networkx.pickle', 'wb') as handle:
+     #   pickle.dump(vgae_treat1_network, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    #with open('vgae_treat2_networkx.pickle', 'wb') as handle:
+     #   pickle.dump(vgae_treat2_network, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    #open networkx objects
+    with open ('node2vec_control_networkx.pickle', 'rb') as handle:
+        node2vec_control_network = pickle.load(handle)
+    with open('node2vec_treat1_networkx.pickle', 'rb') as handle:
+        node2vec_treat1_network = pickle.load(handle)
+    with open('node2vec_treat2_networkx.pickle', 'rb') as handle:
+        node2vec_treat2_network = pickle.load(handle)
+    
+    with open ('vgae_control_networkx.pickle', 'rb') as handle:
+        vgae_control_network = pickle.load(handle)
+    with open('vgae_treat1_networkx.pickle', 'rb') as handle:
+        vgae_treat1_network = pickle.load(handle)
+    with open('vgae_treat2_networkx.pickle', 'rb') as handle:
+        vgae_treat2_network = pickle.load(handle)
+    
     #compare networks with same treatment
+    print('degree distribution')
+    print('control')
     f_stat, p_value = degree_distribution(corr_control, node2vec_control_network, vgae_control_network, "Control Pearson correlation", "Control node2vec", "Control VGAE")
+    print('treatment 1')
     f_stat, p_value = degree_distribution(corr_treat1, node2vec_treat1_network, vgae_treat1_network, "Treatment 1 Pearson correlation", "Treatment 1 node2vec", "Treatment 1 VGAE")
+    print('treatment 2')
     f_stat, p_value = degree_distribution(corr_treat2, node2vec_treat2_network, vgae_treat2_network, "Treatment 2 Pearson correlation", "Treatment 2 node2vec", "Treatment 2 VGAE")
 
-    f_stat, p_value = clustering_coefficients(corr_control, node2vec_control_network, vgae_control_network)
-    f_stat, p_value = clustering_coefficients(corr_treat1, node2vec_treat1_network, vgae_treat1_network)
-    f_stat, p_value = clustering_coefficients(corr_treat2, node2vec_treat2_network, vgae_treat2_network)
+    print('clustering coefficient')
+    print('control')
+    clustering_coefficients(corr_control, node2vec_control_network, vgae_control_network)
+    print('treatment 1')
+    clustering_coefficients(corr_treat1, node2vec_treat1_network, vgae_treat1_network)
+    print('treatment 2')
+    clustering_coefficients(corr_treat2, node2vec_treat2_network, vgae_treat2_network)
 
+    print('modularity scores')
+    print('control')
     modularity_scores = modularity_score(corr_control, node2vec_control_network, vgae_control_network)
+    print('treatment 1')
     modularity_scores = modularity_score(corr_treat1, node2vec_treat1_network, vgae_treat1_network)
+    print('treatment 2')
     modularity_scores = modularity_score(corr_treat2, node2vec_treat2_network, vgae_treat2_network)
 
     print("Node Centrality Between Model Types")
+    print('control')
     node_centrality(corr_control, node2vec_control_network, vgae_control_network, "Control Pearson Correlation", "Control Node2Vec", "Control VGAE")
+    print('treatment 1')
     node_centrality(corr_treat1, node2vec_treat1_network, vgae_treat1_network, "Treatment 1 Pearson Correlation", "Treatment 1 Node2Vec", "Treatment 1 VGAE")
+    print('treatment 2')
     node_centrality(corr_treat2, node2vec_treat2_network, vgae_treat2_network, "Treatment 2 Pearson Correlation", "Treatment 2 Node2Vec", "Treatment 2 VGAE")
-
-    print("Node Centrality Between Treatments")
-    node_centrality(corr_control, corr_treat1, corr_treat1, "Control Pearson Correlation", "Treatment 1 Pearson Correlation", "Treatment 2 Pearson Correlation")
-    node_centrality(node2vec_control_network, node2vec_treat1_network, node2vec_treat2_network, "Control Node2Vec", "Treament 1 Node2Vec", "Treatment 2 Node2Vec")
-    node_centrality(vgae_control_network, vgae_treat1_network, vgae_treat2_network, "Control VGAE", "Treament 1 VGAE", "Treatment 2 VGAE")
-
-    print('Procrusted Disparity Between Node2Vec and VGAE Embeddings')
-    print('control')
-    procrustes_disparity(node2vec_control, vgae_control_embeddings)
-    print('treat1')
-    procrustes_disparity(node2vec_treat1, vgae_treat1_embeddings)
-    print('treat2')
-    procrustes_disparity(node2vec_treat2, vgae_treat2_embeddings)
-
-    print('Cosine similarity of embeddings')
-    print('control')
-    embedding_cosine_similarity(node2vec_control, vgae_control_embeddings)
-    print('treat1')
-    embedding_cosine_similarity(node2vec_treat1, vgae_treat1_embeddings)
-    print('treat2')
-    embedding_cosine_similarity(node2vec_treat2, vgae_treat2_embeddings)
-
-    print('Jaccard Similarity Between Node2Vec and VGAE')
-    print('control')
-    jaccard_similarity(node2vec_control, vgae_control_embeddings)
-    print('treat1')
-    jaccard_similarity(node2vec_treat1, vgae_treat1_embeddings)
-    print('treat2')
-    jaccard_similarity(node2vec_treat2, vgae_treat2_embeddings)
 
     print('Plotting Networks')
     plot_network(corr_control, 'Control Pearson Correlation')

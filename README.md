@@ -403,8 +403,6 @@ Here is the detailed `README.md` for the `vgae.py` script, which documents each 
 
 ---
 
-# README
-
 # vgae.py
 
 The `vgae.py` script implements a Variational Graph Autoencoder (VGAE) using PyTorch Geometric to analyze biological networks such as gene regulatory networks (GRNs). This script is designed to encode biological graph data into low-dimensional embeddings, reconstruct adjacency matrices, and identify potential regulatory relationships.
@@ -563,10 +561,6 @@ np.save("node_embeddings.npy", embeddings.cpu().numpy())
 ## Conclusion
 
 The `vgae.py` script provides a robust framework for constructing and analyzing gene regulatory networks using VGAE. By integrating deep learning with graph-based methods, it enables researchers to uncover novel insights into gene interactions and cellular processes.
-
----
-
-Here is the corrected version of the markdown with the images included inline.
 
 ---
 

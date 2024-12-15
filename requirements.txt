@@ -1,0 +1,16 @@
+scanpy
+pandas
+numpy
+networkx
+node2vec
+matplotlib
+seaborn
+gseapy
+tqdm
+harmonypy
+anndata
+scipy
+statsmodels
+torch
+torch-geometric
+scikit-learn

@@ -618,3 +618,50 @@ The edge weights represent the similarity or strength of relationships between n
 - **Treatment Group 2**: Similar to group 1 but with signs of a secondary peak, suggesting partial network restoration or a distinct interaction pattern.
 
 ---
+
+## UMAP Visualization of Cell Types
+
+![UMAP Cell Type Annotation](cell-marker-annotations.png)
+
+### Description
+
+This UMAP plot visualizes clusters of cells based on their gene expression profiles, with each cluster annotated by its **cell type**. The annotations are derived using well-known marker genes and statistical cell type markers.
+
+### Key Observations:
+
+1. **Astrocytes/Glia** (grey cluster):
+
+   - Represent support cells in the brain, crucial for maintaining neuronal function and homeostasis.
+
+2. **Neuronal Progenitors** (orange cluster):
+
+   - Early-stage neuronal cells that can differentiate into mature neurons.
+
+3. **Mature Neurons** (green cluster):
+
+   - Fully differentiated neurons responsible for neuronal activity and signaling.
+
+4. **Mature/Differentiating Neurons** (blue cluster):
+
+   - Intermediate state between progenitors and mature neurons.
+
+5. **Transitioning/Active Neurons** (purple cluster):
+
+   - Cells undergoing active transcriptional changes as part of their transition.
+
+6. **Differentiating Neurons** and **Early Differentiating Neurons** (red clusters):
+
+   - Neuronal cells at earlier stages of differentiation.
+
+7. **Stress-Responsive/Signaling Neurons** (brown cluster):
+   - Neurons responding to stress or exhibiting enhanced signaling pathways.
+
+### Biological Context
+
+This visualization highlights the heterogeneity of neuronal populations and glial cells within the dataset. By clustering cells based on gene expression and annotating them with specific types, we gain insights into:
+
+- Developmental pathways of neurons.
+- Cellular responses to stress or treatment.
+- Identification of critical cell populations for downstream analysis (e.g., disease markers, regulatory patterns).
+
+---
